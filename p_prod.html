@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <title>Productivity Dashboard</title>
+  <link rel="icon" type="image/x-icon" href="data:image/x-icon;base64," />
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <style>
+    .transition-smooth {
+      transition: all 0.2s ease-in-out;
+    }
+
+    .chart-container:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+    }
+
+    .filter-button:checked+label {
+      background-color: #3b82f6;
+      /* blue-500 */
+      color: white;
+      font-weight: 600;
+    }
+
+    .filter-button+label {
+      background-color: #f8fafc;
+      /* slate-50 */
+      color: #1e293b;
+      /* slate-800 */
+    }
+
+
+    select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' fill='%2390abcb' viewBox='0 0 256 256'%3E%3Cpath d='M181.66,170.34a8,8,0,0,1,0,11.32l-48,48a8,8,0,0,1-11.32,0l-48-48a8,8,0,0,1,11.32-11.32L128,212.69l42.34-42.35A8,8,0,0,1,181.66,170.34Zm-96-84.68L128,43.31l42.34,42.35a8,8,0,0,0,11.32-11.32l-48-48a8,8,0,0,0-11.32,0l-48,48A8,8,0,0,0,85.66,85.66Z'%3E%3C/path%3E%3C/svg%3E");
+      background-position: right 0.5rem center;
+      background-size: 1.25rem;
+    }
+
+    .bar {
+      transition: height 0.3s ease;
+    }
+
+    .bar:hover {
+      opacity: 0.9;
+    }
+
+    .vertical-filter {
+      display: none;
+    }
+
+    input#vertical:checked~.vertical-filter {
+      display: block;
+    }
+
+    .layout-container {
+      max-height: 800px;
+      overflow-y: auto;
+    }
+
+    /* .chart-container {
+      min-height: 200px;
+      max-height: 220px;
+    } */
+
+    .chart-container {
+      height: auto;
+      min-height: 260px;
+      /* enough room for labels */
+    }
+
+    .chart-container svg,
+    .chart-container .grid {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+
+<body class="bg-[#101923] text-white font-['Inter'] min-h-screen flex flex-col">
+  <!-- Header -->
+  <header class="bg-[#223449] border-b border-[#314b68] px-4 py-2 sticky top-0 z-10 shadow-md">
+    <div class="max-w-7xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-2">
+        <svg class="w-5 h-5 text-[#0bda5e]" viewBox="0 0 48 48" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+          <path
+            d="M39.5563 34.1455V13.8546C39.5563 15.708 36.8773 17.3437 32.7927 18.3189C30.2914 18.916 27.263 19.2655 24 19.2655C20.737 19.2655 17.7086 18.916 15.2073 18.3189C11.1227 17.3437 8.44365 15.708 8.44365 13.8546V34.1455C8.44365 35.9988 11.1227 37.6346 15.2073 38.6098C17.7086 39.2069 20.737 39.5564 24 39.5564C27.263 39.5564 30.2914 39.2069 32.7927 38.6098C36.8773 37.6346 39.5563 35.9988 39.5563 34.1455Z" />
+          <path fill-rule="evenodd" clip-rule="evenodd"
+            d="M10.4485 13.8519C10.4749 13.9271 10.6203 14.246 11.379 14.7361C12.298 15.3298 13.7492 15.9145 15.6717 16.3735C18.0007 16.9296 20.8712 17.2655 24 17.2655C27.1288 17.2655 29.9993 16.9296 32.3283 16.3735C34.2508 15.9145 35.702 15.3298 36.621 14.7361C37.3796 14.246 37.5251 13.9271 37.5515 13.8519C37.5287 13.7876 37.4333 13.5973 37.0635 13.2931C36.5266 12.8516 35.6288 12.3647 34.343 11.9175C31.79 11.0295 28.1333 10.4437 24 10.4437C19.8667 10.4437 16.2099 11.0295 13.657 11.9175C12.3712 12.3647 11.4734 12.8516 10.9365 13.2931C10.5667 13.5973 10.4713 13.7876 10.4485 13.8519ZM37.5563 18.7877C36.3176 19.3925 34.8502 19.8839 33.2571 20.2642C30.5836 20.9025 27.3973 21.2655 24 21.2655C20.6027 21.2655 17.4164 20.9025 14.7429 20.2642C13.1498 19.8839 11.6824 19.3925 10.4436 18.7877V34.1275C10.4515 34.1545 10.5427 34.4867 11.379 35.027C12.298 35.6207 13.7492 36.2054 15.6717 36.6644C18.0007 37.2205 20.8712 37.5564 24 37.5564C27.1288 37.5564 29.9993 37.2205 32.3283 36.6644C34.2508 36.2054 35.702 35.6207 36.621 35.027C37.4573 34.4867 37.5485 34.1546 37.5563 34.1275V18.7877ZM41.5563 13.8546C41.5563 12.2684 40.6278 11.0454 39.6042 10.2036C38.5667 9.3505 37.1863 8.67141 35.657 8.13948C32.5797 7.06909 28.4582 6.44366 24 6.44366C19.5418 6.44366 15.4203 7.06909 12.343 8.13948C10.8137 8.67141 9.43325 9.3505 8.39581 10.2036C7.37223 11.0454 6.44365 12.2684 6.44365 13.8546V34.1455C6.44365 36.1078 7.84205 37.5042 9.20848 38.3869C10.6502 39.3182 12.5808 40.0389 14.7429 40.5551C17.4164 41.1934 20.6027 41.5564 24 41.5564C27.3973 41.5564 30.5836 41.1934 33.2571 40.5551C35.4192 40.0389 37.3498 39.3182 38.7915 38.3869C40.158 37.5042 41.5563 36.1078 41.5563 34.1455Z" />
+        </svg>
+        <h1 class="text-lg font-bold">Productivity Dashboard</h1>
+      </div>
+      <div class="flex items-center gap-3">
+        <nav class="flex gap-2">
+          <a href="#" class="text-[#90abcb] hover:text-[#0bda5e] text-sm font-medium transition-smooth">Overview</a>
+          <a href="#" class="text-[#0bda5e] font-semibold text-sm">Productivity</a>
+          <a href="#" class="text-[#90abcb] hover:text-[#0bda5e] text-sm font-medium transition-smooth">Quality</a>
+          <a href="#" class="text-[#90abcb] hover:text-[#0bda5e] text-sm font-medium transition-smooth">Adoption</a>
+          <a href="#" class="text-[#90abcb] hover:text-[#0bda5e] text-sm font-medium transition-smooth">Impact</a>
+        </nav>
+        <button class="p-1 rounded-lg bg-[#314b68] hover:bg-[#223449] transition-smooth">
+          <svg class="w-4 h-4 text-[#90abcb]" xmlns="http://www.w3.org/2000/svg" fill="currentColor"
+            viewBox="0 0 256 256">
+            <path
+              d="M221.8,175.94C216.25,166.38,208,139.33,208,104a80,80,0,1,0-160,0c0,35.34-8.26,62.38-13.81,71.94A16,16,0,0,0,48,200H88.81a40,40,0,0,0,78.38,0H208a16,16,0,0,0,13.8-24.06ZM128,216a24,24,0,0,1-22.62-16h45.24A24,24,0,0,1,128,216ZM48,184c7.7-13.24,16-43.92,16-80a64,64,0,1,1,128,0c0,36.05,8.28,66.73,16,80Z" />
+          </svg>
+        </button>
+        <div class="w-6 h-6 rounded-full bg-cover bg-center"
+          style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBwWVQ9GF1oDx4dmEyRpBvy9ZH2UCpCuUvGKaB9BGFgHShO_7FVxLrJpozPTFRdd2bung1OYpjC8_rg4vMtoMcoxoyY7M8Hznox6a_M3LAgUDAh7mrDhrYT4CBawkrnhAYHlul3LGKTosiGIL-kLmv-GAYTEq7-ujEvzmC6ubEAFJ-WVdUv_QTA_QGYOdlSf6p2ensdJEE5DB8qJ536FVw-nQ1fjrrzyP4G9vs1_3-YC-aRdQAgjnz2tCsTGrXbsP6bOEfqp-Qg-eg');">
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="flex-1 max-w-7xl mx-auto w-full px-4 py-4">
+    <!-- Filters -->
+    <div class="mb-4 flex flex-wrap gap-2 items-center">
+      <div class="flex rounded-md overflow-hidden bg-[#223449] p-0.5">
+        <input type="radio" id="ic" name="view" value="IC" class="hidden filter-button" checked>
+        <label for="ic" class="px-2 py-1 cursor-pointer text-sm font-medium rounded-md transition-smooth">IC</label>
+        <input type="radio" id="team" name="view" value="Team" class="hidden filter-button">
+        <label for="team" class="px-2 py-1 cursor-pointer text-sm font-medium rounded-md transition-smooth">Team</label>
+        <input type="radio" id="vertical" name="view" value="Vertical" class="hidden filter-button">
+        <label for="vertical"
+          class="px-2 py-1 cursor-pointer text-sm font-medium rounded-md transition-smooth">Vertical</label>
+      </div>
+      <div class="vertical-filter">
+        <select
+          class="bg-[#314b68] border border-[#223449] rounded-md px-2 py-1 text-sm text-[#90abcb] focus:outline-none focus:ring-2 focus:ring-[#0bda5e] appearance-none">
+          <option value="all">All Verticals</option>
+          <option value="vertical1">Vertical 1</option>
+          <option value="vertical2">Vertical 2</option>
+          <option value="vertical3">Vertical 3</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Charts Grid -->
+    <div class="grid grid-cols-1 gap-4">
+      <!-- FTE Trend Chart -->
+      <div class="chart-container bg-[#223449] rounded-lg p-3 border border-[#314b68] transition-smooth">
+        <h3 class="text-sm font-semibold text-white mb-1">FTE Trend (Last 12 Months)</h3>
+        <p class="text-lg font-bold text-white mb-1">+12%</p>
+        <div class="flex gap-1 text-xs">
+          <span class="text-[#90abcb]">Last 12 Months</span>
+          <span class="text-[#0bda5e] font-medium">+12%</span>
+        </div>
+        <div class="mt-2 h-48">
+          <svg width="100%" height="100%" viewBox="0 0 400 150" fill="none" xmlns="http://www.w3.org/2000/svg"
+            preserveAspectRatio="none">
+            <path
+              d="M0 120C20 120 20 40 40 40C60 40 60 70 80 70C100 70 100 110 120 110C140 110 140 50 160 50C180 50 180 100 200 100C220 100 220 80 240 80C260 80 260 130 280 130C300 130 300 140 320 140C340 140 340 20 360 20C380 20 380 90 400 90V150H0V120Z"
+              fill="url(#paint0_linear)" />
+            <path
+              d="M0 120C20 120 20 40 40 40C60 40 60 70 80 70C100 70 100 110 120 110C140 110 140 50 160 50C180 50 180 100 200 100C220 100 220 80 240 80C260 80 260 130 280 130C300 130 300 140 320 140C340 140 340 20 360 20C380 20 380 90 400 90"
+              stroke="#90abcb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+            <defs>
+              <linearGradient id="paint0_linear" x1="200" y1="20" x2="200" y2="150" gradientUnits="userSpaceOnUse">
+                <stop stop-color="#223449" />
+                <stop offset="1" stop-color="#223449" stop-opacity="0" />
+              </linearGradient>
+            </defs>
+          </svg>
+          <div class="flex justify-between mt-1 text-xs text-[#90abcb] font-medium">
+            <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span>
+            <span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Workflow Trend Chart -->
+      <div class="chart-container bg-[#223449] rounded-lg p-3 border border-[#314b68] transition-smooth">
+        <h3 class="text-sm font-semibold text-white mb-1">Workflow Trend (Last 12 Months)</h3>
+        <p class="text-lg font-bold text-white mb-1">+8%</p>
+        <div class="flex gap-1 text-xs">
+          <span class="text-[#90abcb]">Last 12 Months</span>
+          <span class="text-[#0bda5e] font-medium">+8%</span>
+        </div>
+        <div class="mt-2 h-48">
+          <div class="grid grid-cols-12 gap-0.5 items-end" style="height: 100%;">
+            <div class="bar bg-gradient-to-t from-[#90abcb] to-[#223449] rounded-t-sm" style="height: 90%;"></div>
+            <div class="bar bg-gradient-to-t from-[#90abcb] to-[#223449] rounded-t-sm" style="height: 80%;"></div>
+            <div class="bar bg-gradient-to-t from-[#90abcb] to-[#223449] rounded-t-sm" style="height: 70%;"></div>
+            <div class="bar bg-gradient-to-t from-[#90abcb] to-[#223449] rounded-t-sm" style="height: 60%;"></div>
+            <div class="bar bg-gradient-to-t from-[#90abcb] to-[#223449] rounded-t-sm" style="height: 50%;"></div>
+            <div class="bar bg-gradient-to-t from-[#90abcb] to-[#223449] rounded-t-sm" style="height: 40%;"></div>
+            <div class="bar bg-gradient-to-t from-[#90abcb] to-[#223449] rounded-t-sm" style="height: 30%;"></div>
+            <div class="bar bg-gradient-to-t from-[#90abcb] to-[#223449] rounded-t-sm" style="height: 20%;"></div>
+            <div class="bar bg-gradient-to-t from-[#90abcb] to-[#223449] rounded-t-sm" style="height: 70%;"></div>
+            <div class="bar bg-gradient-to-t from-[#90abcb] to-[#223449] rounded-t-sm" style="height: 60%;"></div>
+            <div class="bar bg-gradient-to-t from-[#90abcb] to-[#223449] rounded-t-sm" style="height: 50%;"></div>
+            <div class="bar bg-gradient-to-t from-[#90abcb] to-[#223449] rounded-t-sm" style="height: 40%;"></div>
+          </div>
+          <div class="grid grid-cols-12 gap-0.5 text-xs text-[#90abcb] font-medium text-center mt-1">
+            <span>Jan</span><span>Feb</span><span>Mar</span><span>Apr</span><span>May</span><span>Jun</span>
+            <span>Jul</span><span>Aug</span><span>Sep</span><span>Oct</span><span>Nov</span><span>Dec</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</body>
+
+</html>
