@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Charts Dashboard for 11 Categories over 12 Months</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-treemap@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-matrix"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            color: #333;
+            margin: 20px;
+        }
+        h1 {
+            text-align: center;
+            color: #2c3e50;
+        }
+        .dashboard {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+            gap: 20px;
+        }
+        .chart-container {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .chart-container h2 {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .small-multiples {
+            grid-column: span 2; /* Span across two columns if possible */
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+        }
+        .small-chart {
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        .small-chart h3 {
+            font-size: 1em;
+            margin-bottom: 5px;
+            text-align: center;
+        }
+        canvas {
+            max-width: 100%;
+            height: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>Distribution and Trends Charts</h1>
+    <p>This dashboard visualizes dummy data for 11 categories over 12 months using various chart types. Data is randomly generated for demonstration.</p>
+    <div class="dashboard">
+        <div class="chart-container">
+            <h2>Stacked Bar Chart (Distribution over Months)</h2>
+            <canvas id="stackedBar"></canvas>
+        </div>
+        <div class="chart-container">
+            <h2>Grouped Bar Chart (Clustered by Month)</h2>
+            <canvas id="groupedBar"></canvas>
+        </div>
+        <div class="chart-container">
+            <h2>Treemap (Overall Distribution)</h2>
+            <canvas id="treemap"></canvas>
+        </div>
+        <div class="chart-container">
+            <h2>Pie Chart (Overall Distribution)</h2>
+            <canvas id="pie"></canvas>
+        </div>
+        <div class="chart-container">
+            <h2>100% Stacked Bar (Normalized Distribution over Months)</h2>
+            <canvas id="percentStacked"></canvas>
+        </div>
+        <div class="chart-container">
+            <h2>Multi-Line Chart (Trends)</h2>
+            <canvas id="multiLine"></canvas>
+        </div>
+        <div class="small-multiples">
+            <!-- Small multiples will be appended here via JS -->
+        </div>
+        <div class="chart-container">
+            <h2>Stacked Area Chart (Trends + Distribution)</h2>
+            <canvas id="stackedArea"></canvas>
+        </div>
+        <div class="chart-container">
+            <h2>Heatmap (Category vs Month)</h2>
+            <canvas id="heatmap"></canvas>
+        </div>
+        <div class="chart-container">
+            <h2>Ribbon Chart (Approximated as Stacked Area with Emphasis on Ranking)</h2>
+            <canvas id="ribbon"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // Data
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        const categories = ["Cat1", "Cat2", "Cat3", "Cat4", "Cat5", "Cat6", "Cat7", "Cat8", "Cat9", "Cat10", "Cat11"];
+        const dataMatrix = [
+            [61,24,81,70,30,92,96,84,84,97,33,12],
+            [31,62,11,97,39,47,11,73,69,30,42,85],
+            [67,31,98,58,68,51,69,89,24,71,71,56],
+            [71,60,64,73,12,60,16,30,82,48,27,13],
+            [98,69,23,18,99,62,11,93,69,80,53,17],
+            [56,44,87,90,45,59,13,11,15,63,13,63],
+            [72,27,99,53,43,83,71,23,57,24,81,87],
+            [96,71,49,94,89,91,62,33,35,98,69,50],
+            [38,24,54,74,98,80,18,97,10,17,97,72],
+            [20,90,17,44,44,42,14,50,37,16,82,81],
+            [21,43,42,57,32,71,97,46,53,95,44,74]
+        ];
+
+        // Generate colors
+        const colors = [
+            'rgba(255, 99, 132, 0.8)', 'rgba(54, 162, 235, 0.8)', 'rgba(255, 206, 86, 0.8)',
+            'rgba(75, 192, 192, 0.8)', 'rgba(153, 102, 255, 0.8)', 'rgba(255, 159, 64, 0.8)',
+            'rgba(199, 199, 199, 0.8)', 'rgba(83, 102, 255, 0.8)', 'rgba(255, 99, 255, 0.8)',
+            'rgba(99, 255, 132, 0.8)', 'rgba(162, 54, 235, 0.8)'
+        ];
+        const borderColors = colors.map(c => c.replace('0.8', '1'));
+
+        // Helper: Transpose data for month-based
+        const transpose = m => m[0].map((_, i) => m.map(row => row[i]));
+
+        const dataByMonth = transpose(dataMatrix);
+
+        // Calculate totals per month for normalization
+        const monthTotals = dataByMonth.map(col => col.reduce((a, b) => a + b, 0));
+
+        // Normalized data for 100% stacked
+        const normalizedData = dataMatrix.map(row => row.map((val, m) => (val / monthTotals[m]) * 100));
+
+        // Overall totals for pie and treemap
+        const overallTotals = dataMatrix.map(row => row.reduce((a, b) => a + b, 0));
+
+        // Datasets for category-based charts
+        const categoryDatasets = categories.map((cat, i) => ({
+            label: cat,
+            data: dataMatrix[i],
+            backgroundColor: colors[i],
+            borderColor: borderColors[i],
+            borderWidth: 1
+        }));
+
+        // 1. Stacked Bar Chart
+        new Chart(document.getElementById('stackedBar'), {
+            type: 'bar',
+            data: {
+                labels: months,
+                datasets: categoryDatasets
+            },
+            options: {
+                scales: {
+                    x: { stacked: true },
+                    y: { stacked: true }
+                },
+                responsive: true
+            }
+        });
+
+        // 2. Grouped Bar Chart
+        new Chart(document.getElementById('groupedBar'), {
+            type: 'bar',
+            data: {
+                labels: months,
+                datasets: categoryDatasets
+            },
+            options: {
+                responsive: true
+            }
+        });
+
+        // 3. Treemap (Overall)
+        new Chart(document.getElementById('treemap'), {
+            type: 'treemap',
+            data: {
+                datasets: [{
+                    label: 'Treemap',
+                    tree: overallTotals.map((val, i) => ({ value: val })),
+                    key: 'value',
+                    groups: [0],
+                    labels: {
+                        display: true,
+                        formatter: (context) => categories[context.dataIndex]
+                    },
+                    backgroundColor: colors
+                }]
+            },
+            options: {
+                responsive: true
+            }
+        });
+
+        // 4. Pie Chart (Overall)
+        new Chart(document.getElementById('pie'), {
+            type: 'pie',
+            data: {
+                labels: categories,
+                datasets: [{
+                    data: overallTotals,
+                    backgroundColor: colors
+                }]
+            },
+            options: {
+                responsive: true
+            }
+        });
+
+        // 5. 100% Stacked Bar
+        const normalizedDatasets = categories.map((cat, i) => ({
+            label: cat,
+            data: normalizedData[i],
+            backgroundColor: colors[i],
+            borderColor: borderColors[i],
+            borderWidth: 1
+        }));
+        new Chart(document.getElementById('percentStacked'), {
+            type: 'bar',
+            data: {
+                labels: months,
+                datasets: normalizedDatasets
+            },
+            options: {
+                scales: {
+                    x: { stacked: true },
+                    y: { stacked: true, max: 100 }
+                },
+                responsive: true
+            }
+        });
+
+        // 6. Multi-Line Chart
+        new Chart(document.getElementById('multiLine'), {
+            type: 'line',
+            data: {
+                labels: months,
+                datasets: categoryDatasets
+            },
+            options: {
+                responsive: true
+            }
+        });
+
+        // 7. Small Multiples
+        const smallMultiplesContainer = document.querySelector('.small-multiples');
+        categories.forEach((cat, i) => {
+            const div = document.createElement('div');
+            div.className = 'small-chart';
+            const h3 = document.createElement('h3');
+            h3.textContent = cat;
+            const canvas = document.createElement('canvas');
+            canvas.id = `smallLine${i}`;
+            canvas.height = 150;
+            div.appendChild(h3);
+            div.appendChild(canvas);
+            smallMultiplesContainer.appendChild(div);
+
+            new Chart(canvas, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: cat,
+                        data: dataMatrix[i],
+                        borderColor: borderColors[i],
+                        backgroundColor: colors[i],
+                        fill: false
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    scales: {
+                        y: { beginAtZero: true }
+                    }
+                }
+            });
+        });
+
+        // 8. Stacked Area Chart
+        const stackedAreaDatasets = categoryDatasets.map(ds => ({ ...ds, fill: true }));
+        new Chart(document.getElementById('stackedArea'), {
+            type: 'line',
+            data: {
+                labels: months,
+                datasets: stackedAreaDatasets
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { stacked: true }
+                }
+            }
+        });
+
+        // 9. Heatmap
+        const heatmapData = [];
+        categories.forEach((cat, catIdx) => {
+            months.forEach((month, monthIdx) => {
+                heatmapData.push({
+                    x: monthIdx,
+                    y: catIdx,
+                    v: dataMatrix[catIdx][monthIdx]
+                });
+            });
+        });
+        new Chart(document.getElementById('heatmap'), {
+            type: 'matrix',
+            data: {
+                datasets: [{
+                    label: 'Heatmap',
+                    data: heatmapData,
+                    backgroundColor(context) {
+                        if (context.raw) {
+                            const value = context.raw.v;
+                            const alpha = value / 100; // Normalize to 0-1 assuming max 100
+                            return `rgba(255, 99, 132, ${alpha})`;
+                        }
+                    },
+                    borderColor: 'rgb(255, 255, 255)',
+                    borderWidth: 1,
+                    width: ({chart}) => (chart.chartArea || {}).width / 12 - 1,
+                    height: ({chart}) => (chart.chartArea || {}).height / 11 - 1
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    x: {
+                        type: 'category',
+                        labels: months,
+                        offset: true
+                    },
+                    y: {
+                        type: 'category',
+                        labels: categories.reverse(), // Reverse to match top-to-bottom
+                        offset: true,
+                        reverse: true
+                    }
+                },
+                plugins: {
+                    legend: false
+                }
+            }
+        });
+
+        // 10. Ribbon Chart (Approximated as Stacked Area)
+        new Chart(document.getElementById('ribbon'), {
+            type: 'line',
+            data: {
+                labels: months,
+                datasets: stackedAreaDatasets
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: { stacked: true }
+                },
+                elements: {
+                    line: {
+                        tension: 0.4 // Smoother lines for ribbon feel
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>

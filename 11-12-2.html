@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>11–12 Category Dashboard – Distribution & 12‑Month Trends</title>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  <style>
+    :root{
+      --bg: #0b1020;
+      --card: #12182a;
+      --text: #eaf0ff;
+      --subtext: #a9b2c7;
+      --grid: #24304a;
+      --accent: #7aa2ff;
+      --shadow: 0 10px 30px rgba(0,0,0,.25);
+    }
+    .light{
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --text: #111827;
+      --subtext: #4b5563;
+      --grid: #e5e7eb;
+      --accent: #2563eb;
+      --shadow: 0 8px 22px rgba(34, 60, 101, .15);
+    }
+    html, body { height: 100%; }
+    body{
+      margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      background: var(--bg); color: var(--text);
+    }
+    .container{ max-width: 1400px; margin: 0 auto; padding: 24px; }
+    header{ display:flex; gap:16px; align-items:center; justify-content:space-between; margin-bottom: 18px; }
+    .title{ font-weight: 800; letter-spacing: .2px; }
+    .subtitle{ color: var(--subtext); font-weight:500; }
+
+    .controls{ display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
+    .control{ background: var(--card); border:1px solid var(--grid); padding:10px 14px; border-radius:14px; box-shadow: var(--shadow); display:flex; gap:10px; align-items:center; }
+    select, button{
+      background: transparent; border:none; color: var(--text); font-size:14px; outline:none; cursor:pointer;
+    }
+    button.toggle{ padding:8px 12px; background: var(--card); border:1px solid var(--grid); border-radius:12px; }
+
+    .grid{ display:grid; grid-template-columns: repeat(12, 1fr); gap:16px; }
+    .card{ grid-column: span 12; background: var(--card); border:1px solid var(--grid); border-radius: 18px; padding: 14px 14px 8px; box-shadow: var(--shadow); }
+    .card h3{ margin:6px 6px 10px; font-size: 16px; font-weight: 700; letter-spacing:.2px; }
+    .card .hint{ margin: -2px 6px 10px; color: var(--subtext); font-size:12px; }
+
+    .span-6{ grid-column: span 6; }
+    .span-4{ grid-column: span 4; }
+    .span-8{ grid-column: span 8; }
+
+    @media (max-width: 1100px){ .span-6, .span-4, .span-8{ grid-column: span 12; } }
+
+    svg{ width: 100%; height: 100%; }
+    .chart { height: 360px; }
+    .mini { height: 160px; }
+
+    .legend{ display:flex; flex-wrap:wrap; gap:8px; margin: 8px 6px 0; }
+    .legend-item{ display:flex; align-items:center; gap:8px; padding:6px 10px; border:1px solid var(--grid); border-radius:12px; font-size:12px; color: var(--subtext); }
+    .legend-swatch{ width: 10px; height: 10px; border-radius: 10px; }
+
+    .tooltip{ position: fixed; pointer-events:none; background: rgba(17,24,39,.9); color: #f9fafb; padding:8px 10px; border-radius: 10px; font-size:12px; border:1px solid rgba(255,255,255,.08); transform:translate(-50%, -120%); z-index: 10;}
+    .tooltip.light{ background: rgba(255,255,255,.95); color:#111827; border-color: rgba(0,0,0,.05); }
+
+    .axis path, .axis line{ stroke: var(--grid); }
+    .axis text{ fill: var(--subtext); font-size: 12px; }
+    .gridline line{ stroke: var(--grid); stroke-opacity:.6; }
+    .btn{ color: var(--text); background: var(--accent); border: none; padding: 8px 12px; border-radius: 12px; font-weight:700; }
+  </style>
+</head>
+<body>
+  <div class="container" id="app">
+    <header>
+      <div>
+        <div class="title">11–12 Category Dashboard</div>
+        <div class="subtitle">Distribution & Trends across 12 months · D3.js</div>
+      </div>
+      <div class="controls">
+        <div class="control">
+          <label for="monthSelect">Select month</label>
+          <select id="monthSelect"></select>
+        </div>
+        <div class="control">
+          <label for="catCount">Categories</label>
+          <select id="catCount">
+            <option value="11">11</option>
+            <option value="12">12</option>
+          </select>
+        </div>
+        <button class="toggle" id="themeBtn">Toggle Theme</button>
+        <button class="btn" id="regenBtn" title="Regenerate demo data">Regenerate Data</button>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section class="card span-12">
+        <h3>Stacked Area – Trend + Share</h3>
+        <div class="hint">Shows total trend and each category's contribution over 12 months.</div>
+        <div id="stackedArea" class="chart"></div>
+        <div id="legendArea" class="legend"></div>
+      </section>
+
+      <section class="card span-8">
+        <h3>Heatmap – Category × Month</h3>
+        <div class="hint">Intensity indicates count; great for pattern detection.</div>
+        <div id="heatmap" class="chart"></div>
+      </section>
+      <section class="card span-4">
+        <h3>Treemap – Overall Share (12 months)</h3>
+        <div class="hint">Proportion of total counts by category.</div>
+        <div id="treemap" class="chart"></div>
+      </section>
+
+      <section class="card span-12">
+        <h3>Small Multiples – Per‑Category Trends</h3>
+        <div class="hint">Each mini-chart shows a category's 12‑month line.</div>
+        <div id="smallMultiples" class="grid" style="grid-template-columns: repeat(6, 1fr);"></div>
+      </section>
+
+      <section class="card span-8">
+        <h3>100% Stacked Bar – Monthly Share</h3>
+        <div class="hint">Normalized monthly composition of categories (0–100%).</div>
+        <div id="stackedBar100" class="chart"></div>
+      </section>
+      <section class="card span-4">
+        <h3>Donut – Selected Month Distribution</h3>
+        <div class="hint">Breakdown of categories for the selected month.</div>
+        <div id="donut" class="chart"></div>
+      </section>
+    </div>
+  </div>
+
+  <div id="tooltip" class="tooltip" style="opacity:0"></div>
+
+<script>
+(function(){
+  // ======= Utility & Config =======
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const color = d3.scaleOrdinal(d3.schemeTableau10.concat(["#b07aa1","#7aa2ff","#72b7b2","#f9a65a","#cf5c78"]).slice(0, 12));
+
+  const app = document.getElementById('app');
+  const tooltip = d3.select('#tooltip');
+  let isLight = false;
+
+  function seedPRNG(seed){
+    // Mulberry32
+    return function(){
+      let t = seed += 0x6D2B79F5;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    }
+  }
+
+  function generateData(nCats=11, seed=42){
+    const rnd = seedPRNG(seed);
+    const cats = d3.range(nCats).map(i => `Category ${i+1}`);
+    const data = months.map((m, mi) => {
+      let base = 50 + mi * 5; // upward trend baseline
+      const row = { monthIndex: mi, month: m };
+      cats.forEach((c, ci) => {
+        // category-specific trend & seasonality
+        const season = 10 * Math.sin((mi/12) * 2*Math.PI + ci*0.4) + 10;
+        const drift = (ci%3===0? 1.2: 0.9) * base;
+        row[c] = Math.round(Math.max(5, drift * (0.5 + rnd()) * (0.6 + season/20)));
+      });
+      return row;
+    });
+    return {cats, data};
+  }
+
+  // Responsive helper
+  function getSize(sel){
+    const node = d3.select(sel).node();
+    const w = node.getBoundingClientRect().width;
+    const h = node.getBoundingClientRect().height || 360;
+    return {w, h};
+  }
+
+  // Tooltip helpers
+  function showTip(html, x, y){
+    tooltip.html(html).style('left', x+"px").style('top', y+"px").style('opacity', 1).classed('light', isLight);
+  }
+  function hideTip(){ tooltip.style('opacity', 0); }
+
+  // Global state
+  let state = { nCats: 11, seed: 42 };
+  let dataset = generateData(state.nCats, state.seed);
+
+  // ======= Charts =======
+  function renderAll(){
+    color.domain(dataset.cats);
+    buildLegend();
+    renderStackedArea();
+    renderHeatmap();
+    renderTreemap();
+    renderSmallMultiples();
+    renderStackedBar100();
+    renderDonut(d3.select('#monthSelect').property('value') || 0);
+  }
+
+  function buildLegend(){
+    const wrap = d3.select('#legendArea');
+    const items = wrap.selectAll('.legend-item').data(dataset.cats, d=>d);
+    const enter = items.enter().append('div').attr('class','legend-item');
+    enter.append('div').attr('class','legend-swatch').style('background', d=>color(d));
+    enter.append('div').text(d=>d);
+    items.exit().remove();
+  }
+
+  function totalsByMonth(){
+    return dataset.data.map(row => {
+      const t = d3.sum(dataset.cats, c => row[c]);
+      return {...row, total: t};
+    });
+  }
+
+  // Stacked Area
+  function renderStackedArea(){
+    const sel = '#stackedArea';
+    d3.select(sel).selectAll('*').remove();
+    const {w,h} = getSize(sel);
+    const margin = {top: 12, right: 18, bottom: 28, left: 44};
+    const innerW = w - margin.left - margin.right;
+    const innerH = h - margin.top - margin.bottom;
+
+    const series = d3.stack().keys(dataset.cats)(dataset.data);
+    const x = d3.scalePoint().domain(months).range([0, innerW]).padding(0.5);
+    const y = d3.scaleLinear().domain([0, d3.max(series, s => d3.max(s, d => d[1]))]).nice().range([innerH, 0]);
+
+    const svg = d3.select(sel).append('svg').attr('viewBox', `0 0 ${w} ${h}`);
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    g.append('g').attr('class','gridline')
+      .call(d3.axisLeft(y).ticks(5).tickSize(-innerW).tickFormat(''));
+
+    const area = d3.area()
+      .x((d,i) => x(months[i]))
+      .y0(d => y(d[0]))
+      .y1(d => y(d[1]))
+      .curve(d3.curveMonotoneX);
+
+    const layers = g.selectAll('.layer').data(series, d=>d.key);
+    const layerEnter = layers.enter().append('path').attr('class','layer')
+      .attr('fill', d=>color(d.key))
+      .attr('opacity', .9)
+      .attr('d', d=>area(d));
+
+    // Axes
+    g.append('g').attr('class','axis').attr('transform',`translate(0,${innerH})`)
+      .call(d3.axisBottom(x));
+    g.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(5));
+
+    // Interaction
+    svg.on('mousemove', (event)=>{
+      const [mx,my] = d3.pointer(event);
+      const idx = Math.round((mx - margin.left) / (innerW/(months.length-1)));
+      const clamped = Math.max(0, Math.min(months.length-1, idx));
+      const m = months[clamped];
+      const row = dataset.data[clamped];
+      const lines = dataset.cats.map(c => `<div><b style="color:${color(c)}">${c}</b>: ${row[c]}</div>`).join('');
+      showTip(`<div><b>${m}</b></div>${lines}`, event.clientX, event.clientY);
+    }).on('mouseleave', hideTip);
+  }
+
+  // Heatmap
+  function renderHeatmap(){
+    const sel = '#heatmap';
+    d3.select(sel).selectAll('*').remove();
+    const {w,h} = getSize(sel);
+    const margin = {top: 8, right: 10, bottom: 28, left: 90};
+    const innerW = w - margin.left - margin.right;
+    const innerH = h - margin.top - margin.bottom;
+
+    const x = d3.scaleBand().domain(months).range([0, innerW]).padding(0.05);
+    const y = d3.scaleBand().domain(dataset.cats).range([0, innerH]).padding(0.08);
+
+    const values = dataset.data.flatMap((row, mi) => dataset.cats.map(c => ({month: months[mi], cat: c, value: row[c]})));
+    const maxV = d3.max(values, d=>d.value);
+    const colorH = d3.scaleSequential(d3.interpolateBlues).domain([0, maxV]);
+
+    const svg = d3.select(sel).append('svg').attr('viewBox', `0 0 ${w} ${h}`);
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    g.append('g').attr('class','axis').attr('transform', `translate(0,${innerH})`).call(d3.axisBottom(x));
+    g.append('g').attr('class','axis').call(d3.axisLeft(y));
+
+    const cells = g.selectAll('rect').data(values);
+    cells.enter().append('rect')
+      .attr('x', d=>x(d.month)).attr('y', d=>y(d.cat))
+      .attr('width', x.bandwidth()).attr('height', y.bandwidth())
+      .attr('rx', 6)
+      .attr('fill', d=>colorH(d.value))
+      .on('mousemove', (event,d)=>{
+        showTip(`<b>${d.cat}</b> · ${d.month}: ${d.value}`, event.clientX, event.clientY);
+      }).on('mouseleave', hideTip)
+    ;
+  }
+
+  // Treemap (overall totals)
+  function renderTreemap(){
+    const sel = '#treemap';
+    d3.select(sel).selectAll('*').remove();
+    const {w,h} = getSize(sel);
+
+    const totals = dataset.cats.map(c => ({ name: c, value: d3.sum(dataset.data, r => r[c]) }));
+    const root = d3.hierarchy({children: totals}).sum(d=>d.value);
+    d3.treemap().tile(d3.treemapSquarify.ratio(1.2)).size([w, h]).padding(6)(root);
+
+    const svg = d3.select(sel).append('svg').attr('viewBox', `0 0 ${w} ${h}`);
+    const g = svg.append('g');
+
+    const node = g.selectAll('g').data(root.leaves()).enter().append('g')
+      .attr('transform', d=>`translate(${d.x0},${d.y0})`);
+
+    node.append('rect')
+      .attr('rx', 12)
+      .attr('width', d=>Math.max(0, d.x1-d.x0))
+      .attr('height', d=>Math.max(0, d.y1-d.y0))
+      .attr('fill', d=>color(d.data.name))
+      .attr('opacity', .9)
+      .on('mousemove', (event,d)=>{
+        showTip(`<b>${d.data.name}</b><br>Total: ${d.data.value}`, event.clientX, event.clientY);
+      }).on('mouseleave', hideTip);
+
+    node.append('text')
+      .attr('x', 10).attr('y', 18)
+      .attr('fill', 'white').attr('font-size', 12).attr('font-weight', 700)
+      .text(d=>d.data.name)
+      .append('tspan').attr('x',10).attr('dy',16).attr('fill','white').attr('font-weight',500)
+      .text(d=>d3.format(',')(d.data.value));
+  }
+
+  // Small Multiples
+  function renderSmallMultiples(){
+    const wrap = d3.select('#smallMultiples');
+    wrap.selectAll('*').remove();
+    const cols = 6; // 6 x 2 grid for 12, 6 x 2- rows for 11
+
+    const cards = wrap.selectAll('.miniCard').data(dataset.cats, d=>d).enter()
+      .append('div').attr('class','card miniCard').style('padding','8px');
+
+    cards.append('div').attr('class','hint').style('margin','0 0 4px 2px').text(d=>d);
+    cards.append('div').attr('class','mini').each(function(cat){
+      const sel = this;
+      const {width} = sel.getBoundingClientRect();
+      const w = width || 220, h = 120;
+      const margin = {top: 6, right: 8, bottom: 18, left: 30};
+      const innerW = w - margin.left - margin.right;
+      const innerH = h - margin.top - margin.bottom;
+
+      const x = d3.scalePoint().domain(months).range([0, innerW]).padding(0.5);
+      const y = d3.scaleLinear().domain([0, d3.max(dataset.data, r=>r[cat])]).nice().range([innerH, 0]);
+
+      const svg = d3.select(sel).append('svg').attr('viewBox', `0 0 ${w} ${h}`);
+      const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+      g.append('g').attr('class','gridline').call(d3.axisLeft(y).ticks(3).tickSize(-innerW).tickFormat(''));
+      const line = d3.line().x((d,i)=>x(months[i])).y(d=>y(d[cat])).curve(d3.curveMonotoneX);
+      g.append('path').datum(dataset.data).attr('fill','none').attr('stroke', color(cat)).attr('stroke-width',2).attr('d', line);
+      g.append('g').attr('class','axis').attr('transform',`translate(0,${innerH})`).call(d3.axisBottom(x).tickValues(["Jan","Apr","Jul","Oct"]));
+      g.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(3));
+    });
+  }
+
+  // 100% Stacked Bar
+  function renderStackedBar100(){
+    const sel = '#stackedBar100';
+    d3.select(sel).selectAll('*').remove();
+    const {w,h} = getSize(sel);
+    const margin = {top: 10, right: 18, bottom: 28, left: 44};
+    const innerW = w - margin.left - margin.right;
+    const innerH = h - margin.top - margin.bottom;
+
+    // Normalize
+    const norm = dataset.data.map(row => {
+      const total = d3.sum(dataset.cats, c=>row[c]);
+      const o = {month: row.month};
+      dataset.cats.forEach(c=> o[c] = row[c]/total );
+      return o;
+    });
+
+    const series = d3.stack().keys(dataset.cats)(norm);
+
+    const x = d3.scaleBand().domain(months).range([0, innerW]).padding(0.12);
+    const y = d3.scaleLinear().domain([0,1]).range([innerH, 0]);
+
+    const svg = d3.select(sel).append('svg').attr('viewBox', `0 0 ${w} ${h}`);
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    g.append('g').attr('class','gridline')
+      .call(d3.axisLeft(y).ticks(5, '%').tickSize(-innerW).tickFormat(''));
+
+    const groups = g.selectAll('g.layer').data(series, d=>d.key).enter().append('g').attr('class','layer').attr('fill', d=>color(d.key));
+
+    groups.selectAll('rect').data(d=>d.map((v,i)=>({v, i}))).enter().append('rect')
+      .attr('x', d=>x(months[d.i])).attr('y', d=>y(d.v[1]))
+      .attr('height', d=>y(d.v[0]) - y(d.v[1]))
+      .attr('width', x.bandwidth())
+      .attr('rx',4)
+      .on('mousemove', (event,d)=>{
+        const i = d.i; const m = months[i];
+        const parts = dataset.cats.map(c=>({c, pct: d3.format('.0%')(norm[i][c])})).map(p=>`<div><b style="color:${color(p.c)}">${p.c}</b>: ${p.pct}</div>`).join('');
+        showTip(`<b>${m}</b>${parts}`, event.clientX, event.clientY);
+      }).on('mouseleave', hideTip);
+
+    g.append('g').attr('class','axis').attr('transform',`translate(0,${innerH})`).call(d3.axisBottom(x));
+    g.append('g').attr('class','axis').call(d3.axisLeft(y).ticks(5, '%'));
+  }
+
+  // Donut per selected month
+  function renderDonut(monthIndex){
+    const sel = '#donut';
+    d3.select(sel).selectAll('*').remove();
+    const {w,h} = getSize(sel);
+
+    const r = Math.min(w,h)/2 - 10;
+    const svg = d3.select(sel).append('svg').attr('viewBox',`0 0 ${w} ${h}`);
+    const g = svg.append('g').attr('transform',`translate(${w/2},${h/2})`);
+
+    const row = dataset.data[+monthIndex];
+    const entries = dataset.cats.map(c=>({key:c, value: row[c]}));
+
+    const pie = d3.pie().value(d=>d.value); const arc = d3.arc().outerRadius(r).innerRadius(r*0.6).padAngle(0.01).cornerRadius(8);
+    const arcs = g.selectAll('path').data(pie(entries)).enter().append('path')
+      .attr('fill', d=>color(d.data.key))
+      .attr('d', arc)
+      .on('mousemove', (event,d)=>{
+        showTip(`<b>${d.data.key}</b><br>${months[+monthIndex]}: ${d.data.value}`, event.clientX, event.clientY);
+      }).on('mouseleave', hideTip);
+
+    // Center label
+    g.append('text').attr('text-anchor','middle').attr('font-weight',800).attr('font-size',16)
+      .text(months[+monthIndex]);
+  }
+
+  // ======= Controls & Init =======
+  function populateControls(){
+    const monthSelect = d3.select('#monthSelect');
+    monthSelect.selectAll('option').data(months.map((m,i)=>({m,i}))).enter()
+      .append('option').attr('value', d=>d.i).text(d=>d.m);
+    monthSelect.property('value', 0);
+
+    d3.select('#catCount').property('value', state.nCats);
+
+    monthSelect.on('change', (event)=>{
+      renderDonut(event.target.value);
+    });
+
+    d3.select('#themeBtn').on('click', ()=>{
+      isLight = !isLight;
+      document.body.classList.toggle('light', isLight);
+    });
+
+    d3.select('#regenBtn').on('click', ()=>{
+      state.seed = Math.floor(Math.random()*100000);
+      dataset = generateData(state.nCats, state.seed);
+      renderAll();
+    });
+
+    d3.select('#catCount').on('change', (event)=>{
+      state.nCats = +event.target.value;
+      dataset = generateData(state.nCats, state.seed);
+      renderAll();
+    });
+  }
+
+  function init(){
+    populateControls();
+    renderAll();
+    window.addEventListener('resize', d3.debounce ? d3.debounce(renderAll, 150) : () => { clearTimeout(window.__r); window.__r = setTimeout(renderAll, 150); });
+  }
+
+  // d3.debounce helper if missing
+  if(!d3.debounce){
+    d3.debounce = (fn, t=150)=>{ let id=null; return (...args)=>{ clearTimeout(id); id=setTimeout(()=>fn.apply(this,args), t); } };
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Category Dashboard</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+  body {
+    font-family: "Segoe UI", sans-serif;
+    margin: 0;
+    background: #f0f2f5;
+    color: #333;
+  }
+  h2 {
+    text-align: center;
+    margin: 20px 0;
+  }
+  .dashboard {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 20px;
+    padding: 20px;
+  }
+  .chart {
+    background: white;
+    padding: 15px;
+    border-radius: 10px;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+  }
+  svg {
+    width: 100%;
+    height: 300px;
+  }
+  .tooltip {
+    position: absolute;
+    background: rgba(0,0,0,0.75);
+    color: white;
+    padding: 5px 10px;
+    border-radius: 5px;
+    pointer-events: none;
+    font-size: 12px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<h2>Category Dashboard</h2>
+<div class="dashboard">
+  <div class="chart" id="stackedAreaChart"><h3>📈 Trends (Stacked Area)</h3></div>
+  <div class="chart" id="heatmapChart"><h3>🔥 Heatmap (Month × Category)</h3></div>
+  <div class="chart" id="treemapChart"><h3>🌳 Treemap (Category Share)</h3></div>
+  <div class="chart" id="smallMultiples"><h3>📊 Small Multiples (Category Trends)</h3></div>
+  <div class="chart" id="stackedBar100"><h3>⚖️ 100% Stacked Bar</h3></div>
+  <div class="chart" id="donutChart"><h3>🍩 Donut (Distribution)</h3></div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+// ----------------------
+// Replace this with your real data
+const data = [
+  { month: "Jan", category: "A", value: 120 },
+  { month: "Jan", category: "B", value: 95 },
+  { month: "Jan", category: "C", value: 50 },
+  { month: "Feb", category: "A", value: 150 },
+  { month: "Feb", category: "B", value: 80 },
+  { month: "Feb", category: "C", value: 70 },
+  { month: "Mar", category: "A", value: 90 },
+  { month: "Mar", category: "B", value: 60 },
+  { month: "Mar", category: "C", value: 120 },
+  // add all months and all categories
+];
+
+// ----------------------
+// Utility
+const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const categories = Array.from(new Set(data.map(d => d.category)));
+const tooltip = d3.select("#tooltip");
+
+// ----------------------
+// Stacked Area Chart
+(function() {
+  const margin = {top: 30, right: 20, bottom: 30, left: 50};
+  const width = 400 - margin.left - margin.right;
+  const height = 300 - margin.top - margin.bottom;
+
+  const svg = d3.select("#stackedAreaChart")
+    .append("svg")
+    .attr("width", width + margin.left + margin.right)
+    .attr("height", height + margin.top + margin.bottom)
+    .append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+  const stackedData = d3.rollup(data, v => v.reduce((a,b)=>a+b.value,0), d=>d.month, d=>d.category);
+  const stackSeries = d3.stack()
+    .keys(categories)
+    .value((d,key)=>d.get(key) || 0)
+    (months.map(m => stackedData.get(m) || new Map()));
+
+  const x = d3.scalePoint().domain(months).range([0,width]);
+  const y = d3.scaleLinear().domain([0,d3.max(stackSeries[stackSeries.length-1], d=>d[1])]).range([height,0]);
+  const color = d3.scaleOrdinal(d3.schemeCategory10).domain(categories);
+
+  const area = d3.area()
+    .x((d,i)=>x(months[i]))
+    .y0(d=>y(d[0]))
+    .y1(d=>y(d[1]))
+    .curve(d3.curveMonotoneX);
+
+  svg.selectAll("path")
+    .data(stackSeries)
+    .join("path")
+    .attr("fill", d=>color(d.key))
+    .attr("d", area)
+    .attr("opacity",0.8);
+  
+  svg.append("g").attr("transform",`translate(0,${height})`).call(d3.axisBottom(x));
+  svg.append("g").call(d3.axisLeft(y));
+})();
+
+// ----------------------
+// Heatmap Chart
+(function() {
+  const margin={top:30,right:10,bottom:30,left:50};
+  const width=400-margin.left-margin.right;
+  const height=300-margin.top-margin.bottom;
+
+  const svg=d3.select("#heatmapChart").append("svg")
+    .attr("width",width+margin.left+margin.right)
+    .attr("height",height+margin.top+margin.bottom)
+    .append("g").attr("transform",`translate(${margin.left},${margin.top})`);
+
+  const x=d3.scaleBand().domain(months).range([0,width]).padding(0.05);
+  const y=d3.scaleBand().domain(categories).range([0,height]).padding(0.05);
+  const color=d3.scaleSequential().interpolator(d3.interpolateOrRd)
+    .domain([0,d3.max(data,d=>d.value)]);
+
+  svg.selectAll()
+    .data(data)
+    .join("rect")
+    .attr("x",d=>x(d.month))
+    .attr("y",d=>y(d.category))
+    .attr("width",x.bandwidth())
+    .attr("height",y.bandwidth())
+    .attr("fill",d=>color(d.value))
+    .on("mouseover", (e,d)=>tooltip.style("display","block").html(`${d.category}, ${d.month}: ${d.value}`).style("left",(e.pageX+10)+"px").style("top",(e.pageY-20)+"px"))
+    .on("mouseout", ()=>tooltip.style("display","none"));
+
+  svg.append("g").attr("transform",`translate(0,${height})`).call(d3.axisBottom(x));
+  svg.append("g").call(d3.axisLeft(y));
+})();
+
+// ----------------------
+// Treemap Chart
+(function() {
+  const width=400, height=300;
+  const svg=d3.select("#treemapChart").append("svg").attr("width",width).attr("height",height);
+  
+  const categoryTotals = d3.rollup(data, v=>v.reduce((a,b)=>a+b.value,0), d=>d.category);
+  const root = d3.hierarchy({values:Array.from(categoryTotals, ([k,v])=>({name:k,value:v}))}, d=>d.values)
+    .sum(d=>d.value);
+
+  d3.treemap().size([width,height]).padding(3)(root);
+
+  const color = d3.scaleOrdinal(d3.schemeCategory10).domain(categories);
+
+  svg.selectAll("rect")
+    .data(root.leaves())
+    .join("rect")
+    .attr("x", d=>d.x0).attr("y", d=>d.y0)
+    .attr("width", d=>d.x1-d.x0).attr("height", d=>d.y1-d.y0)
+    .attr("fill", d=>color(d.data.name))
+    .on("mouseover", (e,d)=>tooltip.style("display","block").html(`${d.data.name}: ${d.data.value}`).style("left",(e.pageX+10)+"px").style("top",(e.pageY-20)+"px"))
+    .on("mouseout", ()=>tooltip.style("display","none"));
+
+  svg.selectAll("text")
+    .data(root.leaves())
+    .join("text")
+    .attr("x",d=>d.x0+5).attr("y",d=>d.y0+20)
+    .text(d=>d.data.name)
+    .attr("fill","white")
+    .attr("font-size","12px");
+})();
+
+// ----------------------
+// Small Multiples
+(function() {
+  const margin={top:20,right:20,bottom:30,left:40};
+  const width=400-margin.left-margin.right;
+  const height=300-margin.top-margin.bottom;
+
+  const svg=d3.select("#smallMultiples").append("svg")
+    .attr("width",width+margin.left+margin.right)
+    .attr("height",height+margin.top+margin.bottom)
+    .append("g").attr("transform",`translate(${margin.left},${margin.top})`);
+
+  const x=d3.scalePoint().domain(months).range([0,width]);
+  const y=d3.scaleLinear().domain([0,d3.max(data,d=>d.value)]).range([height,0]);
+  const color=d3.scaleOrdinal(d3.schemeCategory10).domain(categories);
+
+  categories.forEach(cat=>{
+    const catData = data.filter(d=>d.category===cat);
+    const line = d3.line()
+      .x(d=>x(d.month))
+      .y(d=>y(d.value))
+      .curve(d3.curveMonotoneX);
+
+    svg.append("path")
+      .datum(catData)
+      .attr("fill","none")
+      .attr("stroke",color(cat))
+      .attr("stroke-width",2)
+      .attr("d",line);
+
+    svg.selectAll(".dot-"+cat)
+      .data(catData)
+      .join("circle")
+      .attr("cx",d=>x(d.month))
+      .attr("cy",d=>y(d.value))
+      .attr("r",3)
+      .attr("fill",color(cat))
+      .on("mouseover",(e,d)=>tooltip.style("display","block").html(`${d.category}, ${d.month}: ${d.value}`).style("left",(e.pageX+10)+"px").style("top",(e.pageY-20)+"px"))
+      .on("mouseout",()=>tooltip.style("display","none"));
+  });
+
+  svg.append("g").attr("transform",`translate(0,${height})`).call(d3.axisBottom(x));
+  svg.append("g").call(d3.axisLeft(y));
+})();
+
+// ----------------------
+// 100% Stacked Bar
+(function() {
+  const margin={top:20,right:20,bottom:30,left:40};
+  const width=400-margin.left-margin.right;
+  const height=300-margin.top-margin.bottom;
+
+  const svg=d3.select("#stackedBar100").append("svg")
+    .attr("width",width+margin.left+margin.right)
+    .attr("height",height+margin.top+margin.bottom)
+    .append("g").attr("transform",`translate(${margin.left},${margin.top})`);
+
+  const monthlyTotals = d3.rollup(data, v=>v.reduce((a,b)=>a+b.value,0), d=>d.month);
+  const normalizedData = months.map(m=>{
+    const row={month:m};
+    categories.forEach(c=>{
+      const val = data.find(d=>d.month===m && d.category===c)?.value || 0;
+      row[c] = val / (monthlyTotals.get(m) || 1);
+    });
+    return row;
+  });
+
+  const stack=d3.stack().keys(categories)(normalizedData);
+  const x=d3.scaleBand().domain(months).range([0,width]).padding(0.1);
+  const y=d3.scaleLinear().domain([0,1]).range([height,0]);
+  const color=d3.scaleOrdinal(d3.schemeCategory10).domain(categories);
+
+  svg.selectAll("g")
+    .data(stack)
+    .join("g")
+    .attr("fill",d=>color(d.key))
+    .selectAll("rect")
+    .data(d=>d)
+    .join("rect")
+    .attr("x",d=>x(d.data.month))
+    .attr("y",d=>y(d[1]))
+    .attr("height",d=>y(d[0])-y(d[1]))
+    .attr("width",x.bandwidth())
+    .on("mouseover",(e,d,i,g)=>tooltip.style("display","block").html(`${stack[g[i].parentNode.__data__.index].key}: ${(d[1]-d[0])*100}%`).style("left",(e.pageX+10)+"px").style("top",(e.pageY-20)+"px"))
+    .on("mouseout",()=>tooltip.style("display","none"));
+
+  svg.append("g").attr("transform",`translate(0,${height})`).call(d3.axisBottom(x));
+  svg.append("g").call(d3.axisLeft(y).tickFormat(d3.format(".0%")));
+})();
+
+// ----------------------
+// Donut Chart
+(function() {
+  const width=400, height=300, radius=Math.min(width,height)/2-30;
+  const svg=d3.select("#donutChart").append("svg").attr("width",width).attr("height",height)
+    .append("g").attr("transform",`translate(${width/2},${height/2})`);
+
+  // Sum per category for selected month (e.g., Jan)
+  const selectedMonth = "Jan";
+  const monthData = data.filter(d=>d.month===selectedMonth);
+  const pie = d3.pie().value(d=>d.value)(monthData);
+  const color = d3.scaleOrdinal(d3.schemeCategory10).domain(categories);
+
+  const arc = d3.arc().innerRadius(radius*0.5).outerRadius(radius);
+
+  svg.selectAll("path")
+    .data(pie)
+    .join("path")
+    .attr("d",arc)
+    .attr("fill",d=>color(d.data.category))
+    .attr("stroke","white").attr("stroke-width",1)
+    .on("mouseover",(e,d)=>tooltip.style("display","block").html(`${d.data.category}: ${d.data.value}`).style("left",(e.pageX+10)+"px").style("top",(e.pageY-20)+"px"))
+    .on("mouseout",()=>tooltip.style("display","none"));
+
+  svg.selectAll("text")
+    .data(pie)
+    .join("text")
+    .attr("transform",d=>`translate(${arc.centroid(d)})`)
+    .attr("text-anchor","middle")
+    .attr("font-size","12px")
+    .text(d=>d.data.category);
+})();
+</script>
+
+</body>
+</html>
