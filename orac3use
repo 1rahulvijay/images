@@ -1,0 +1,304 @@
+[
+    {
+        "id": "sales_2023",
+        "parquet_file": "/data/sales_2023.parquet",
+        "table_name": "SALES_2023",
+        "connection_string": "{{ var.value.oracle_connection_string }}",
+        "expected_columns": ["sale_id", "product", "amount", "sale_date"],
+        "primary_keys": ["sale_id"],
+        "batch_size": 100000,
+        "mode": "append",
+        "validation_rules": {
+            "amount": "lambda x: isinstance(x, (int, float)) and x >= 0",
+            "sale_date": "lambda x: isinstance(x, str) and len(x) > 0"
+        },
+        "transform_fn": "example_transform",
+        "max_retries": 3,
+        "parallel_processes": 4,
+        "pool_timeout": 30,
+        "post_load_check": "example_post_check"
+    },
+    {
+        "id": "inventory_2023",
+        "parquet_file": "/data/inventory_2023.parquet",
+        "table_name": "INVENTORY_2023",
+        "connection_string": "{{ var.value.oracle_connection_string }}",
+        "expected_columns": ["item_id", "item_name", "quantity", "warehouse"],
+        "primary_keys": ["item_id", "warehouse"],
+        "batch_size": 100000,
+        "mode": "replace",
+        "validation_rules": {
+            "quantity": "lambda x: isinstance(x, int) and x >= 0"
+        },
+        "max_retries": 3,
+        "parallel_processes": 2,
+        "pool_timeout": 30
+    },
+    {
+        "id": "customers_2023",
+        "parquet_file": "/data/customers_2023.parquet",
+        "table_name": "CUSTOMERS_2023",
+        "connection_string": "{{ var.value.oracle_connection_string }}",
+        "expected_columns": ["customer_id", "name", "email"],
+        "primary_keys": ["customer_id"],
+        "batch_size": 50000,
+        "mode": "append_with_condition",
+        "condition": "email IS NOT NULL",
+        "validation_rules": {
+            "email": "lambda x: isinstance(x, str) and '@' in x"
+        },
+        "max_retries": 2,
+        "parallel_processes": 3,
+        "pool_timeout": 30
+    },
+    {
+        "id": "orders_2023",
+        "parquet_file": "/data/orders_2023.parquet",
+        "table_name": "ORDERS_2023",
+        "connection_string": "{{ var.value.oracle_connection_string }}",
+        "expected_columns": ["order_id", "customer_id", "order_date", "total"],
+        "primary_keys": ["order_id"],
+        "batch_size": 100000,
+        "mode": "append",
+        "validation_rules": {
+            "total": "lambda x: isinstance(x, (int, float)) and x >= 0"
+        },
+        "max_retries": 3,
+        "parallel_processes": 4,
+        "pool_timeout": 30
+    },
+    {
+        "id": "products_2023",
+        "parquet_file": "/data/products_2023.parquet",
+        "table_name": "PRODUCTS_2023",
+        "connection_string": "{{ var.value.oracle_connection_string }}",
+        "expected_columns": ["product_id", "name", "price"],
+        "primary_keys": ["product_id"],
+        "batch_size": 100000,
+        "mode": "replace",
+        "validation_rules": {
+            "price": "lambda x: isinstance(x, (int, float)) and x > 0"
+        },
+        "max_retries": 3,
+        "parallel_processes": 4,
+        "pool_timeout": 30
+    },
+    {
+        "id": "employees_2023",
+        "parquet_file": "/data/employees_2023.parquet",
+        "table_name": "EMPLOYEES_2023",
+        "connection_string": "{{ var.value.oracle_connection_string }}",
+        "expected_columns": ["emp_id", "name", "department"],
+        "primary_keys": ["emp_id"],
+        "batch_size": 50000,
+        "mode": "append",
+        "validation_rules": {
+            "department": "lambda x: isinstance(x, str) and len(x) > 0"
+        },
+        "max_retries": 2,
+        "parallel_processes": 2,
+        "pool_timeout": 30
+    },
+    {
+        "id": "transactions_2023",
+        "parquet_file": "/data/transactions_2023.parquet",
+        "table_name": "TRANSACTIONS_2023",
+        "connection_string": "{{ var.value.oracle_connection_string }}",
+        "expected_columns": ["trans_id", "account_id", "amount"],
+        "primary_keys": ["trans_id"],
+        "batch_size": 100000,
+        "mode": "append",
+        "validation_rules": {
+            "amount": "lambda x: isinstance(x, (int, float))"
+        },
+        "max_retries": 3,
+        "parallel_processes": 4,
+        "pool_timeout": 30
+    },
+    {
+        "id": "suppliers_2023",
+        "parquet_file": "/data/suppliers_2023.parquet",
+        "table_name": "SUPPLIERS_2023",
+        "connection_string": "{{ var.value.oracle_connection_string }}",
+        "expected_columns": ["supplier_id", "name", "contact"],
+        "primary_keys": ["supplier_id"],
+        "batch_size": 50000,
+        "mode": "replace",
+        "validation_rules": {
+            "contact": "lambda x: isinstance(x, str) and len(x) > 0"
+        },
+        "max_retries": 2,
+        "parallel_processes": 2,
+        "pool_timeout": 30
+    },
+    {
+        "id": "shipments_2023",
+        "parquet_file": "/data/shipments_2023.parquet",
+        "table_name": "SHIPMENTS_2023",
+        "connection_string": "{{ var.value.oracle_connection_string }}",
+        "expected_columns": ["shipment_id", "order_id", "ship_date"],
+        "primary_keys": ["shipment_id"],
+        "batch_size": 100000,
+        "mode": "append",
+        "validation_rules": {
+            "ship_date": "lambda x: isinstance(x, str) and len(x) > 0"
+        },
+        "max_retries": 3,
+        "parallel_processes": 4,
+        "pool_timeout": 30
+    },
+    {
+        "id": "returns_2023",
+        "parquet_file": "/data/returns_2023.parquet",
+        "table_name": "RETURNS_2023",
+        "connection_string": "{{ var.value.oracle_connection_string }}",
+        "expected_columns": ["return_id", "order_id", "reason"],
+        "primary_keys": ["return_id"],
+        "batch_size": 50000,
+        "mode": "append",
+        "validation_rules": {
+            "reason": "lambda x: isinstance(x, str) and len(x) > 0"
+        },
+        "max_retries": 2,
+        "parallel_processes": 2,
+        "pool_timeout": 30
+    },
+    {
+        "id": "promotions_2023",
+        "parquet_file": "/data/promotions_2023.parquet",
+        "table_name": "PROMOTIONS_2023",
+        "connection_string": "{{ var.value.oracle_connection_string }}",
+        "expected_columns": ["promo_id", "name", "discount"],
+        "primary_keys": ["promo_id"],
+        "batch_size": 50000,
+        "mode": "replace",
+        "validation_rules": {
+            "discount": "lambda x: isinstance(x, (int, float)) and x >= 0"
+        },
+        "max_retries": 2,
+        "parallel_processes": 2,
+        "pool_timeout": 30
+    }
+]
+
+
+if __name__ == "__main__":
+    configs = ConfigLoader.load_config(config_path="config.json")
+    configs = ConfigLoader.validate_config(configs)
+    run_multi_etl(configs, status_file="load_status.json")
+
+
+def example_transform(batch: List[Tuple]) -> List[Tuple]:
+    """Convert second column to uppercase."""
+    return [(row[0], row[1].upper() if isinstance(row[1], str) else row[1], *row[2:]) for row in batch]
+
+def example_post_check(table_name: str, connection_string: str) -> bool:
+    """Verify row count > 0."""
+    with oracledb.connect(connection_string) as conn:
+        cur = conn.cursor()
+        cur.execute(f"SELECT COUNT(*) FROM {table_name}")
+        count = cur.fetchone()[0]
+        cur.close()
+        logger.info(f"Post-load check: {count} rows in {table_name}")
+        return count > 0
+
+
+def run_multi_etl(configs: List[Dict], status_file: str = "load_status.json", force_reload: bool = False):
+    tracker = StatusTracker(status_file)
+    failed = []
+    for conf in configs:
+        config_id = conf['id']
+        if not force_reload and tracker.is_succeeded(config_id):
+            logger.info(f"Skipping succeeded load for config {config_id} (table {conf['table_name']})")
+            continue
+        try:
+            # Evaluate string lambdas
+            if 'validation_rules' in conf:
+                conf['validation_rules'] = {
+                    k: eval(v) if isinstance(v, str) and v.startswith('lambda') else v
+                    for k, v in conf['validation_rules'].items()
+                }
+            # Map function names to actual functions
+            conf['transform_fn'] = globals().get(conf.get('transform_fn', ''), None)
+            conf['post_load_check'] = globals().get(conf.get('post_load_check', ''), None)
+            reader = ParquetReader(
+                parquet_file=conf['parquet_file'],
+                batch_size=conf.get('batch_size', 100000),
+                columns=conf['expected_columns']
+            )
+            with OracleLoader(
+                table_name=conf['table_name'],
+                connection_string=conf['connection_string'],
+                expected_columns=conf['expected_columns'],
+                primary_keys=conf.get('primary_keys'),
+                batch_size=conf.get('batch_size', 100000),
+                mode=conf.get('mode', 'append'),
+                condition=conf.get('condition'),
+                validation_rules=conf.get('validation_rules'),
+                transform_fn=conf.get('transform_fn'),
+                max_retries=conf.get('max_retries', 3),
+                parallel_processes=conf.get('parallel_processes', 4),
+                pool_timeout=conf.get('pool_timeout', 30),
+                post_load_check=conf.get('post_load_check')
+            ) as loader:
+                loader.etl_process(reader)
+            tracker.update_status(config_id, 'succeeded')
+        except Exception as e:
+            tracker.update_status(config_id, 'failed', str(e))
+            failed.append(config_id)
+            logger.error(f"Load failed for config {config_id}: {e}")
+    if failed:
+        raise ValueError(f"Loads failed for configs: {failed}")
+
+
+bash
+airflow variables set multi_oracle_etl_configs "$(cat config.json)"
+
+airflow variables set oracle_connection_string "user/password@host:port/service_name"
+
+
+@task
+def run_etl_for_config(conf: Dict):
+    """Run ETL for a single config with status tracking."""
+    status_file = Variable.get("status_file", default_var="load_status.json")
+    tracker = StatusTracker(status_file)
+    config_id = conf['id']
+    if not conf.get('force_reload', False) and tracker.is_succeeded(config_id):
+        logger.info(f"Skipping succeeded load for config {config_id} (table {conf['table_name']})")
+        return f"Skipped {conf['table_name']}"
+    try:
+        # Evaluate string lambdas
+        if 'validation_rules' in conf:
+            conf['validation_rules'] = {
+                k: eval(v) if isinstance(v, str) and v.startswith('lambda') else v
+                for k, v in conf['validation_rules'].items()
+            }
+        # Map function names to actual functions
+        conf['transform_fn'] = globals().get(conf.get('transform_fn', ''), None)
+        conf['post_load_check'] = globals().get(conf.get('post_load_check', ''), None)
+        reader = ParquetReader(
+            parquet_file=conf['parquet_file'],
+            batch_size=conf.get('batch_size', 100000),
+            columns=conf['expected_columns']
+        )
+        with OracleLoader(
+            table_name=conf['table_name'],
+            connection_string=Variable.get("oracle_connection_string"),
+            expected_columns=conf['expected_columns'],
+            primary_keys=conf.get('primary_keys'),
+            batch_size=conf.get('batch_size', 100000),
+            mode=conf.get('mode', 'append'),
+            condition=conf.get('condition'),
+            validation_rules=conf.get('validation_rules'),
+            transform_fn=conf.get('transform_fn'),
+            max_retries=conf.get('max_retries', 3),
+            parallel_processes=conf.get('parallel_processes', 4),
+            pool_timeout=conf.get('pool_timeout', 30),
+            post_load_check=conf.get('post_load_check')
+        ) as loader:
+            loader.etl_process(reader)
+        tracker.update_status(config_id, 'succeeded')
+        return f"Success for {conf['table_name']}"
+    except Exception as e:
+        tracker.update_status(config_id, 'failed', str(e))
+        raise ValueError(f"Failed for {conf['table_name']}: {e}")
