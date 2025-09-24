@@ -1,0 +1,365 @@
+import pyarrow.parquet as pq
+import oracledb
+import logging
+import sys
+import time
+import yaml
+import json
+from typing import List, Dict, Optional, Tuple, Iterator, Callable
+import multiprocessing as mp
+import xxhash
+import pandas as pd
+import pytest
+import uuid
+from contextlib import contextmanager
+from datetime import datetime, timedelta
+from pathlib import Path
+
+# For Airflow integration
+try:
+    from airflow.decorators import dag, task
+    from airflow.operators.python import PythonOperator
+    from airflow.models import Variable
+    from airflow.utils.task_group import TaskGroup
+    AIRFLOW_AVAILABLE = True
+except ImportError:
+    AIRFLOW_AVAILABLE = False
+    logging.warning("Airflow not available; DAG will not be defined.")
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(processName)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+class ConfigLoader:
+    """Handles loading configuration from YAML file or dictionary."""
+    
+    @staticmethod
+    def load_config(config_path: Optional[str] = None, config_dict: Optional[List[Dict]] = None) -> List[Dict]:
+        """Load configuration from YAML file or list of dictionaries. Returns list for multi-config support."""
+        if config_path:
+            with open(config_path, 'r') as f:
+                data = yaml.safe_load(f)
+            return data if isinstance(data, list) else [data]
+        elif config_dict:
+            return config_dict if isinstance(config_dict, list) else [config_dict]
+        else:
+            raise ValueError("Either config_path or config_dict must be provided")
+    
+    @staticmethod
+    def validate_config(configs: List[Dict]) -> List[Dict]:
+        """Validate and return list of configurations."""
+        validated = []
+        for idx, conf in enumerate(configs):
+            required_keys = ['parquet_file', 'table_name', 'connection_string', 'expected_columns']
+            for key in required_keys:
+                if key not in conf:
+                    raise ValueError(f"Missing required config key '{key}' in config {idx+1}")
+            if 'primary_keys' in conf and not isinstance(conf['primary_keys'], list):
+                raise ValueError(f"primary_keys must be a list in config {idx+1}")
+            if 'parallel_processes' in conf:
+                conf['parallel_processes'] = min(max(1, conf['parallel_processes']), 4)
+            conf['id'] = conf.get('id', f"config_{idx+1}")  # Unique ID for status tracking
+            validated.append(conf)
+        return validated
+
+class StatusTracker:
+    """Handles tracking load status for multiple configs using a JSON file."""
+    
+    def __init__(self, status_file: str = "load_status.json"):
+        self.status_file = Path(status_file)
+        self.status = self._load_status()
+    
+    def _load_status(self) -> Dict[str, Dict]:
+        if self.status_file.exists():
+            with open(self.status_file, 'r') as f:
+                return json.load(f)
+        return {}
+    
+    def _save_status(self):
+        with open(self.status_file, 'w') as f:
+            json.dump(self.status, f, indent=4)
+    
+    def is_succeeded(self, config_id: str) -> bool:
+        return self.status.get(config_id, {}).get('status') == 'succeeded'
+    
+    def update_status(self, config_id: str, status: str, message: Optional[str] = None):
+        self.status[config_id] = {'status': status, 'message': message, 'timestamp': datetime.now().isoformat()}
+        self._save_status()
+
+class ParquetReader:
+    """Handles reading and batching of Parquet file data."""
+    
+    def __init__(self, parquet_file: str, batch_size: int, columns: List[str]):
+        if not columns:
+            raise ValueError("Columns list cannot be empty")
+        self.parquet_file = parquet_file
+        self.batch_size = batch_size
+        self.columns = columns
+        
+    def validate_columns(self) -> None:
+        """Validate Parquet file column structure."""
+        try:
+            parquet_file = pq.ParquetFile(self.parquet_file)
+            schema_columns = [field.name for field in parquet_file.schema_arrow]
+            if set(schema_columns) != set(self.columns):
+                raise ValueError(f"Column mismatch. Expected: {self.columns}, Got: {schema_columns}")
+            logger.info("Parquet column structure validated successfully for file {self.parquet_file}.")
+        except FileNotFoundError:
+            logger.error(f"Parquet file not found: {self.parquet_file}")
+            raise
+        except Exception as e:
+            logger.error(f"Parquet validation error for {self.parquet_file}: {e}")
+            raise
+
+    def get_batches(self) -> Iterator[Tuple[int, List[Tuple]]]:
+        """Yields batches of data as tuples with batch index."""
+        try:
+            parquet_file = pq.ParquetFile(self.parquet_file)
+            for i, arrow_batch in enumerate(parquet_file.iter_batches(
+                batch_size=self.batch_size,
+                columns=self.columns
+            )):
+                batch_data = list(zip(*[arrow_batch.column(col).to_pylist() for col in self.columns]))
+                yield i, batch_data
+                logger.info(f"Read batch {i+1} from {self.parquet_file} ({len(batch_data)} rows)")
+        except Exception as e:
+            logger.error(f"Error reading Parquet file {self.parquet_file}: {e}")
+            raise
+
+class OracleLoader:
+    """Handles loading data into Oracle database with parallel processing."""
+    
+    VALID_MODES = {'append', 'replace', 'append_with_condition', 'delete_with_condition'}
+    
+    def __init__(
+        self,
+        table_name: str,
+        connection_string: str,
+        expected_columns: List[str],
+        primary_keys: List[str] = None,
+        batch_size: int = 100000,
+        mode: str = 'append',
+        condition: Optional[str] = None,
+        validation_rules: Optional[Dict[str, Callable]] = None,
+        transform_fn: Optional[Callable[[List[Tuple]], List[Tuple]]] = None,
+        max_retries: int = 3,
+        parallel_processes: int = 4,
+        pool_timeout: int = 30,
+        post_load_check: Optional[Callable[[str, str], bool]] = None
+    ):
+        self.table_name = table_name
+        self.connection_string = connection_string
+        self.expected_columns = expected_columns
+        self.primary_keys = primary_keys or []
+        self.batch_size = batch_size
+        self.mode = mode.lower()
+        self.condition = condition
+        self.validation_rules = validation_rules or {}
+        self.transform_fn = transform_fn
+        self.max_retries = max_retries
+        self.parallel_processes = parallel_processes
+        self.pool_timeout = pool_timeout
+        self.post_load_check = post_load_check
+        self.connection_pool = None
+        
+        # Performance metrics
+        self.total_rows_loaded = mp.Value('i', 0)
+        self.rows_skipped = mp.Value('i', 0)
+        self.batch_times = mp.Manager().list()
+        self.start_time = None
+        self.end_time = None
+
+    @contextmanager
+    def connection(self):
+        """Context manager for acquiring and releasing a connection from the pool."""
+        conn = None
+        try:
+            conn = self.connection_pool.acquire()
+            yield conn
+        except oracledb.Error as e:
+            logger.error(f"Connection acquisition error: {e}")
+            raise
+        finally:
+            if conn:
+                self.connection_pool.release(conn)
+
+    def __enter__(self):
+        """Initialize connection pool."""
+        self.start_time = time.time()
+        try:
+            self.connection_pool = oracledb.create_pool(
+                dsn=self.connection_string,
+                min=1,
+                max=self.parallel_processes,
+                increment=1,
+                getmode=oracledb.POOL_GETMODE_WAIT,
+                timeout=self.pool_timeout
+            )
+            logger.info(f"Connection pool created with max {self.parallel_processes} connections for table {self.table_name}")
+        except oracledb.Error as e:
+            logger.error(f"Failed to create connection pool for table {self.table_name}: {e}")
+            raise
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Clean up connection pool and log metrics."""
+        if self.connection_pool:
+            try:
+                self.connection_pool.close()
+                logger.info("Connection pool closed for table {self.table_name}")
+            except oracledb.Error as e:
+                logger.error(f"Error closing connection pool for table {self.table_name}: {e}")
+        self.end_time = time.time()
+        self.log_performance_metrics()
+        if self.post_load_check:
+            self.post_load_check(self.table_name, self.connection_string)
+
+    # (Other methods like validate_data, deduplicate_batch, transform_batch, load_batch, prepare_table, process_batch, log_performance_metrics remain the same as before)
+
+    def etl_process(self, reader: ParquetReader):
+        """Execute ETL process with parallel batch loading."""
+        try:
+            reader.validate_columns()
+            self.prepare_table()
+            
+            if self.parallel_processes > 1:
+                with mp.Pool(processes=self.parallel_processes, maxtasksperchild=10) as pool:
+                    pool.map(self.process_batch, reader.get_batches())
+            else:
+                for batch in reader.get_batches():
+                    self.process_batch(batch)
+            logger.info(f"ETL completed successfully for table {self.table_name}")
+        except Exception as e:
+            logger.error(f"ETL failed for table {self.table_name}: {e}")
+            raise
+
+def run_multi_etl(configs: List[Dict], status_file: str = "load_status.json", force_reload: bool = False):
+    """Run ETL for multiple configs, skipping succeeded ones unless force_reload."""
+    tracker = StatusTracker(status_file)
+    failed = []
+    for conf in configs:
+        config_id = conf['id']
+        if not force_reload and tracker.is_succeeded(config_id):
+            logger.info(f"Skipping succeeded load for config {config_id} (table {conf['table_name']})")
+            continue
+        try:
+            reader = ParquetReader(
+                parquet_file=conf['parquet_file'],
+                batch_size=conf.get('batch_size', 100000),
+                columns=conf['expected_columns']
+            )
+            with OracleLoader(
+                table_name=conf['table_name'],
+                connection_string=conf['connection_string'],
+                expected_columns=conf['expected_columns'],
+                primary_keys=conf.get('primary_keys'),
+                batch_size=conf.get('batch_size', 100000),
+                mode=conf.get('mode', 'append'),
+                condition=conf.get('condition'),
+                validation_rules=conf.get('validation_rules'),
+                transform_fn=conf.get('transform_fn'),
+                max_retries=conf.get('max_retries', 3),
+                parallel_processes=conf.get('parallel_processes', 4),
+                pool_timeout=conf.get('pool_timeout', 30),
+                post_load_check=conf.get('post_load_check')
+            ) as loader:
+                loader.etl_process(reader)
+            tracker.update_status(config_id, 'succeeded')
+        except Exception as e:
+            tracker.update_status(config_id, 'failed', str(e))
+            failed.append(config_id)
+            logger.error(f"Load failed for config {config_id}: {e}")
+    if failed:
+        raise ValueError(f"Loads failed for configs: {failed}")
+
+# Example usage for standalone multi-load
+if __name__ == "__main__":
+    # Example list of 11 configs (customize as needed)
+    configs = [
+        {
+            'id': 'table1',
+            'parquet_file': "data1.parquet",
+            'table_name': "TABLE1",
+            'connection_string': "user/password@host:port/service_name",
+            'expected_columns': ["col1", "col2"],
+            'primary_keys': ["col1"],
+            'mode': "append"
+        },
+        # Add 10 more similar configs...
+    ] * 11  # Placeholder for 11
+    configs = ConfigLoader.validate_config(configs)
+    run_multi_etl(configs)
+
+# Airflow DAG with dynamic tasks for multi-table load
+if AIRFLOW_AVAILABLE:
+    @dag(
+        dag_id='multi_oracle_etl_dag',
+        default_args={
+            'owner': 'data-team',
+            'depends_on_past': False,
+            'start_date': datetime(2025, 9, 24),
+            'email_on_failure': False,
+            'email_on_retry': False,
+            'retries': 3,  # Increased retries
+            'retry_delay': timedelta(minutes=5),
+        },
+        description='ETL multiple Parquet files to Oracle tables, with independent task failures',
+        schedule_interval='@daily',
+        catchup=False,
+        tags=['etl', 'oracle', 'multi-table'],
+        max_active_runs=1,
+    )
+    def multi_oracle_etl_dag():
+        @task
+        def load_configs() -> List[Dict]:
+            """Load list of configurations from Airflow Variable (JSON list)."""
+            configs_str = Variable.get("multi_oracle_etl_configs", default_var="[]")
+            configs = json.loads(configs_str)
+            return ConfigLoader.validate_config(configs)
+
+        @task
+        def run_etl_for_config(conf: Dict):
+            """Run ETL for a single config."""
+            try:
+                reader = ParquetReader(
+                    parquet_file=conf['parquet_file'],
+                    batch_size=conf.get('batch_size', 100000),
+                    columns=conf['expected_columns']
+                )
+                with OracleLoader(
+                    table_name=conf['table_name'],
+                    connection_string=Variable.get("oracle_connection_string"),
+                    expected_columns=conf['expected_columns'],
+                    primary_keys=conf.get('primary_keys'),
+                    batch_size=conf.get('batch_size', 100000),
+                    mode=conf.get('mode', 'append'),
+                    condition=conf.get('condition'),
+                    validation_rules=conf.get('validation_rules', {}),
+                    transform_fn=conf.get('transform_fn'),
+                    max_retries=conf.get('max_retries', 3),
+                    parallel_processes=conf.get('parallel_processes', 4),
+                    pool_timeout=conf.get('pool_timeout', 30),
+                    post_load_check=conf.get('post_load_check')
+                ) as loader:
+                    loader.etl_process(reader)
+                return f"Success for {conf['table_name']}"
+            except Exception as e:
+                raise ValueError(f"Failed for {conf['table_name']}: {e}")
+
+        configs = load_configs()
+        with TaskGroup(group_id="load_tasks") as tg:
+            for conf in configs:  # Dynamic tasks based on configs
+                run_etl_for_config.override(task_id=f"load_{conf['id']}")(conf)
+
+        configs >> tg
+
+    # Instantiate the DAG
+    multi_oracle_etl_dag_instance = multi_oracle_etl_dag()
+
+# Unit Tests (expand as needed)
+def test_multi_etl():
+    # Mock configs and test skipping
+    pass  # Implement with mocks
